@@ -1,0 +1,14 @@
+{
+	"name": "Go:tunwg",
+	"image": "mcr.microsoft.com/devcontainers/go",
+	"mounts": [
+		"type=volume,source=vscode_dev_home,target=/home/vscode"
+	],
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"golang.go"
+			]
+		}
+	}
+}
