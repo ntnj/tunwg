@@ -9,6 +9,11 @@ To expose port 8080:
 ```bash
 tunwg --forward=http://localhost:8080
 ```
+You can run tunwg in docker too:
+```bash
+docker run -it --rm --network=host -v tunwg_keys:/data ghcr.io/ntnj/tunwg tunwg --forward=http://localhost:8080
+```
+`--network=host` is needed to access the port 8080 on host.
 
 ## Install
 
@@ -16,7 +21,7 @@ To install from source:
 ```bash
 go install https://github.com/ntnj/tunwg/tunwg
 ```
-Github releases and docker images will be added soon.
+Github releases will be added soon.
 
 It works on Windows/Linux/Mac.
 
