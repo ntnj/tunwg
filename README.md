@@ -48,6 +48,10 @@ listener, err := tunwg.NewListener("<name>")
 http.Serve(listener, httpHandler)
 ```
 
+### Persistent URLs
+
+Since the generated subdomain is derived from your wireguard key and the forwarded address, it'll remain constant across process restarts. The wireguard key is stored in `.config/tunwg/` (`/data/` in docker).
+
 ### Automatic SSL certificates
 
 Automatic SSL certificate are issued through LetsEncrypt and automatically renewed. Fallback to ZeroSSL is supported in case of LetsEncrypt rate limits.
@@ -60,7 +64,16 @@ You can forward any ports on local network which the machine running tunwg has a
 tunwg --forward=http://10.0.0.2:8000,http://10.0.0.10:9000
 ```
 
-This is especially useful when running `tunwg` with docker compose to expose the ports on other containers without making any modifications to those images.
+This is especially useful when running `tunwg` with docker compose to expose the ports on other containers without making any modifications to those images. e.g. `docker-compose.yml`
+```docker-compose.yml
+  tunwg:
+    image: ghcr.io/ntnj/tunwg
+    command: tunwg --forward=http://whoami
+
+  whoami:
+    image: traefik/whoami
+```
+You can then run `docker compose logs tunwg` to view the generated URL.
 
 ### HTTP Basic Auth support
 
@@ -89,7 +102,19 @@ go install https://github.com/ntnj/tunwg/tunwgs
 TUNWG_API=example.com TUNWG_IP=<ip-of-server> TUNWG_PORT=<wireguard-port> tunwgs
 ```
 
-Clients will connect to your hosted instance if you set `TUNWG_API` environment variable to your own tunwg server.
+With docker:
+```docker-compose.yml
+tunwgs:
+  image: ghcr.io/ntnj/tunwg
+  network_mode: host  # or ports, 80,443,443/udp
+  command: tunwgs
+  environment:
+    TUNWG_PORT: 443
+    TUNWG_IP: "a.b.c.d"  # ip of server
+    TUNWG_API: example.com  # all subdomains should resolve to server
+```
+
+Clients will connect to your hosted instance if you set the same `TUNWG_API` environment variable there.
 
 You can also set the `TUNWG_AUTH` environment variable to limit which clients can use your server. In that case, clients would need to set the same `TUNWG_AUTH`.
 
@@ -103,7 +128,7 @@ If you're running it behind a reverse proxy like caddy/nginx, you should make su
 
 One of the primary goals for tunwg was to securely allow new clients to join without requiring any configuration or database on server, and to allow end to end SSL.
 
-The `tunwg` binary runs a user-space TCP/IP stack using [`gVisor netstack`](https://gvisor.dev/docs/user_guide/networking/). It generates a wireguard private key, and derives the IP address of wireguard connection based on a hash of the public key. On startup, it sends the public key to the tunwg server which replies with its own public key, estabilishing a wireguard connection between client and server. 
+The `tunwg` binary runs a user-space TCP/IP stack using [`gVisor netstack`](https://gvisor.dev/docs/user_guide/networking/). It generates a wireguard private key, and derives the IP address of wireguard connection based on a hash of the public key. On startup, it sends the public key to the tunwg server which replies with its own public key, establishing a wireguard connection between client and server. 
 
 The generated domain name is an encoding of the internal wireguard IP address and the port. When tunwg server receives a request, it parses the TLS SNI to get the domain and decodes it to an IP:port pair, which it then forwards the connection to over the internal wireguard network.
 
