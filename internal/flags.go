@@ -36,6 +36,10 @@ func ApiDomain() string {
 	return "l.tunwg.com"
 }
 
+func AuthKey() string {
+	return os.Getenv("TUNWG_AUTH")
+}
+
 func ServerIp() string {
 	ip := os.Getenv("TUNWG_IP")
 	return ip

@@ -83,6 +83,10 @@ func allowUserKey(key wgtypes.Key, endpoint string) error {
 func apiMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/add", func(w http.ResponseWriter, r *http.Request) {
+		if authKey, reqKey := internal.AuthKey(), r.Header.Get("X-Authorization"); authKey != "" && authKey != reqKey {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 		reqBytes, err := io.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)

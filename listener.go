@@ -58,7 +58,15 @@ func addServerPeer() error {
 	if err != nil {
 		return err
 	}
-	httpResp, err := http.Post("https://"+internal.ApiDomain()+"/add", "application/json", bytes.NewReader(reqBytes))
+	httpReq, err := http.NewRequest("POST", "https://"+internal.ApiDomain()+"/add", bytes.NewReader(reqBytes))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if authKey := internal.AuthKey(); authKey != "" {
+		httpReq.Header.Set("X-Authorization", authKey)
+	}
+	httpResp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
 		return err
 	}
