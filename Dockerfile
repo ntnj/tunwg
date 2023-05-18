@@ -7,12 +7,21 @@ COPY go.sum ./
 RUN go mod download
 
 COPY . ./
-RUN --mount=type=cache,target=/root/.cache/go-build go build -o /bin/ ./tunwgs ./tunwg
+RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -ldflags="-w -s" -o bin/ ./tunwgs ./tunwg
 
-FROM ubuntu
+FROM alpine as upx
 
-RUN apt-get update && apt-get install -y ca-certificates --no-install-recommends
-COPY --from=build /bin/ /bin/
+RUN apk add --no-cache upx
+
+COPY --from=build /app/bin/ /app/bin/
+RUN upx --best /app/bin/*
+
+FROM alpine
+
+RUN apk add -U --no-cache ca-certificates
+
+COPY --from=build /app/bin/ /bin/
+# COPY --from=upx /app/bin/ /bin/
 
 VOLUME /data
 ENV TUNWG_PATH=/data
