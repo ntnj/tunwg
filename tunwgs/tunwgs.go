@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -24,6 +26,7 @@ import (
 )
 
 func main() {
+	flag.Parse()
 	if err := internal.Initialize(); err != nil {
 		log.Fatalf("failed to initialize: %v", err)
 	}
@@ -121,6 +124,34 @@ func apiMux() *http.ServeMux {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(respBytes)
 	})
+	mux.HandleFunc("/relay", func(w http.ResponseWriter, r *http.Request) {
+		if proto := r.Header.Get("Upgrade"); proto != "udp-relay" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		h, ok := w.(http.Hijacker)
+		if !ok {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Connection", "Upgrade")
+		w.Header().Set("Upgrade", "udp-relay")
+		w.WriteHeader(http.StatusSwitchingProtocols)
+		conn, _, err := h.Hijack()
+		if err != nil {
+			log.Printf("hijack error: %v", err)
+			return
+		}
+		defer conn.Close()
+		udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+		if err != nil {
+			log.Printf("relay listen error: %v", err)
+			return
+		}
+		if err := internal.RelayServer(conn, udpConn, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: internal.GetListenPort()}); err != nil && !errors.Is(err, io.EOF) {
+			log.Printf("relay error: %v", err)
+		}
+	})
 	return mux
 }
 
@@ -202,7 +233,7 @@ func (p *persistPeers) backgroundWriter(d time.Duration) {
 }
 
 func (p *persistPeers) writeToDisk() error {
-	dev, err := internal.GetConnectedPeers()
+	dev, err := internal.GetWgDeviceInfo()
 	if err != nil {
 		return err
 	}

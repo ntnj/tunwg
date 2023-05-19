@@ -51,3 +51,11 @@ func SSLCertificateEmail() string {
 	}
 	return "certs@tunwg.com"
 }
+
+func UseRelay() bool {
+	return os.Getenv("TUNWG_RELAY") != ""
+}
+
+func TestOnlyRunLocalhost() bool {
+	return os.Getenv("TUNWG_TEST_LOCALHOST") == "true"
+}

@@ -61,7 +61,7 @@ func initializeOnce() error {
 		return err
 	}
 	wgNet = wgnet
-	wgdev := device.NewDevice(wgtun, conn.NewDefaultBind(), device.NewLogger(device.LogLevelSilent, "tunwg: "))
+	wgdev := device.NewDevice(wgtun, conn.NewDefaultBind(), device.NewLogger(device.LogLevelError, "tunwg: "))
 	if err := wgdev.Up(); err != nil {
 		return err
 	}
@@ -102,7 +102,7 @@ func DialWg(ctx context.Context, network, address string) (net.Conn, error) {
 
 func BackgroundLogger(d time.Duration) {
 	for range time.Tick(d) {
-		dev := Must(GetConnectedPeers())
+		dev := Must(GetWgDeviceInfo())
 		msg := ""
 		for _, peer := range dev.Peers {
 			msg += fmt.Sprintf("key:%v,ep:%v,time:%v\n", peer.PublicKey, peer.Endpoint, peer.LastHandshakeTime)
@@ -111,7 +111,7 @@ func BackgroundLogger(d time.Duration) {
 	}
 }
 
-func GetConnectedPeers() (*wgtypes.Device, error) {
+func GetWgDeviceInfo() (*wgtypes.Device, error) {
 	raw, err := wgDevice.IpcGet()
 	if err != nil {
 		return nil, err
@@ -139,7 +139,12 @@ func GetConnectedPeers() (*wgtypes.Device, error) {
 			}
 			lastPeer = &wgtypes.Peer{PublicKey: Must(wgtypes.NewKey(Must(hex.DecodeString(value))))}
 		}
-		if lastPeer != nil {
+		if lastPeer == nil {
+			switch key {
+			case "listen_port":
+				dev.ListenPort = int(Must(strconv.ParseInt(value, 10, 64)))
+			}
+		} else {
 			switch key {
 			case "rx_bytes":
 				lastPeer.ReceiveBytes = Must(strconv.ParseInt(value, 10, 64))

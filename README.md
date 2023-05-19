@@ -19,7 +19,7 @@ docker run -it --rm --network=host -v tunwg_keys:/data ghcr.io/ntnj/tunwg tunwg 
 
 To install from source:
 ```bash
-go install https://github.com/ntnj/tunwg/tunwg
+go install github.com/ntnj/tunwg/tunwg@latest
 ```
 Github releases will be added soon.
 
@@ -55,6 +55,11 @@ Since the generated subdomain is derived from your wireguard key and the forward
 ### Automatic SSL certificates
 
 Automatic SSL certificate are issued through LetsEncrypt and automatically renewed. Fallback to ZeroSSL is supported in case of LetsEncrypt rate limits.
+
+### Relay traffic over HTTPS
+
+In case your firewall blocks UDP packets, you can relay the traffic over HTTPS. To use, just add `TUNWG_RELAY=true` to client environment variables.
+This will effectively be TCP over UDP over TCP, so performance will suffer in case of packet drops. Use this option only if needed.
 
 ### Expose ports on other hosts
 
@@ -98,7 +103,7 @@ Since anyone can run a server on `l.tunwg.com` domain, be careful when using coo
 The instance at `l.tunwg.com` runs on a VPS with very limited resources and may be bandwidth limited. For critical use cases, you can self-host your own tunwg server.
 
 ```bash
-go install https://github.com/ntnj/tunwg/tunwgs
+go install github.com/ntnj/tunwg/tunwgs@latest
 TUNWG_API=example.com TUNWG_IP=<ip-of-server> TUNWG_PORT=<wireguard-port> tunwgs
 ```
 
@@ -131,6 +136,14 @@ One of the primary goals for tunwg was to securely allow new clients to join wit
 The `tunwg` binary runs a user-space TCP/IP stack using [`gVisor netstack`](https://gvisor.dev/docs/user_guide/networking/). It generates a wireguard private key, and derives the IP address of wireguard connection based on a hash of the public key. On startup, it sends the public key to the tunwg server which replies with its own public key, establishing a wireguard connection between client and server. 
 
 The generated domain name is an encoding of the internal wireguard IP address and the port. When tunwg server receives a request, it parses the TLS SNI to get the domain and decodes it to an IP:port pair, which it then forwards the connection to over the internal wireguard network.
+
+### Develop locally
+
+Run server: `TUNWG_TEST_LOCALHOST=true TUNWG_PORT=443 TUNWG_IP=127.0.0.1 go run ./tunwgs`
+
+Run client: `TUNWG_TEST_LOCALHOST=true go run ./tunwg --forward=http://localhost:8000`
+
+Test: `curl -k -Li --resolve abcd.l.tunwg.com:443:127.0.0.1 https://abcd.l.tunwg.com`
 
 ## Possible Future Improvements
 

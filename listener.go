@@ -1,12 +1,14 @@
 package tunwg
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -85,10 +87,18 @@ func addServerPeer() error {
 	if err != nil {
 		return err
 	}
+	endpoint := resp.Endpoint
+	if internal.UseRelay() {
+		ep, err := establishRelay()
+		if err != nil {
+			return err
+		}
+		endpoint = ep
+	}
 	return internal.WgSetIpc([]string{
 		"replace_peers=true",
 		"public_key=" + hex.EncodeToString(servKey[:]),
-		"endpoint=" + resp.Endpoint,
+		"endpoint=" + endpoint,
 		fmt.Sprintf("allowed_ip=%v/128", internal.GetIPForKey(servKey)),
 		"persistent_keepalive_interval=25",
 	})
@@ -132,7 +142,7 @@ func startListenersOnce() error {
 
 func backgroundMonitor() {
 	for range time.Tick(30 * time.Second) {
-		dev, err := internal.GetConnectedPeers()
+		dev, err := internal.GetWgDeviceInfo()
 		if err != nil {
 			log.Printf("WARNING: internal error: %v", err)
 		}
@@ -146,4 +156,52 @@ func backgroundMonitor() {
 			}
 		}
 	}
+}
+
+func establishRelay() (string, error) {
+	server := internal.ApiDomain()
+	if internal.TestOnlyRunLocalhost() {
+		server = "127.0.0.1"
+	}
+	conn, err := tls.Dial("tcp", fmt.Sprintf("%s:443", server), &tls.Config{
+		ServerName:         internal.ApiDomain(),
+		InsecureSkipVerify: internal.TestOnlyRunLocalhost(),
+	})
+	if err != nil {
+		return "", err
+	}
+	httpReq, err := http.NewRequest("GET", "https://"+internal.ApiDomain()+"/relay", nil)
+	if err != nil {
+		return "", err
+	}
+	httpReq.Header.Set("Connection", "Upgrade")
+	httpReq.Header.Set("Upgrade", "udp-relay")
+
+	if err := httpReq.Write(conn); err != nil {
+		return "", err
+	}
+	httpResp, err := http.ReadResponse(bufio.NewReader(conn), httpReq)
+	if err != nil {
+		return "", err
+	}
+	if httpResp.StatusCode != http.StatusSwitchingProtocols {
+		b, _ := io.ReadAll(httpResp.Body)
+		httpResp.Body.Close()
+		return "", fmt.Errorf("unexpected relay status: %v %v", httpResp.StatusCode, string(b))
+	}
+	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		return "", err
+	}
+	dev, err := internal.GetWgDeviceInfo()
+	if err != nil {
+		return "", err
+	}
+	go func() {
+		err := internal.RelayServer(conn, udpConn, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: dev.ListenPort})
+		if err != nil && !errors.Is(err, io.EOF) {
+			log.Printf("client relay error: %v", err)
+		}
+	}()
+	return udpConn.LocalAddr().String(), nil
 }

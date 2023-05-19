@@ -1,12 +1,18 @@
 package internal
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"log"
+	"math/big"
 	"net"
 	"net/http"
 	"net/url"
@@ -14,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
@@ -31,6 +38,9 @@ func GetTLSConfig() *tls.Config {
 	return &tls.Config{
 		NextProtos: []string{"h2", "http/1.1", acme.ALPNProto},
 		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			if TestOnlyRunLocalhost() {
+				return localhostCertificate()
+			}
 			if cert, err := le.GetCertificate(hello); err == nil {
 				return cert, nil
 			} else {
@@ -118,4 +128,26 @@ func getZeroSSLEab() (*acme.ExternalAccountBinding, error) {
 		}
 	}
 	return res, nil
+}
+
+func localhostCertificate() (*tls.Certificate, error) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, err
+	}
+	template := x509.Certificate{
+		Subject:      pkix.Name{CommonName: "localhost"},
+		Issuer:       pkix.Name{CommonName: "localhost"},
+		SerialNumber: big.NewInt(1),
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().AddDate(1, 0, 0),
+	}
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		return nil, err
+	}
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey)})
+	certificate, err := tls.X509KeyPair(certPEM, keyPEM)
+	return &certificate, err
 }

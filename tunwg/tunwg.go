@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
+	"crypto/tls"
 	"flag"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -23,6 +26,9 @@ func main() {
 	flag.Parse()
 	if *forwardFlag == "" {
 		log.Fatalf("empty forwarding: %v", *forwardFlag)
+	}
+	if internal.TestOnlyRunLocalhost() {
+		enableLocahostServerTesting()
 	}
 	ps := strings.Split(*forwardFlag, ",")
 	var g sync.WaitGroup
@@ -74,4 +80,13 @@ func (r *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 	}
 	return http.DefaultTransport.RoundTrip(req)
+}
+
+func enableLocahostServerTesting() {
+	http.DefaultTransport = &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return net.Dial(network, strings.ReplaceAll(addr, internal.ApiDomain(), "127.0.0.1"))
+		},
+	}
 }

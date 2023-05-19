@@ -10,5 +10,7 @@
 				"golang.go"
 			]
 		}
-	}
+	},
+	// To run wireshark for debugging
+	"capAdd": ["NET_ADMIN"]
 }
