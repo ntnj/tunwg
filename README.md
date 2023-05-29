@@ -50,7 +50,8 @@ http.Serve(listener, httpHandler)
 
 ### Persistent URLs
 
-Since the generated subdomain is derived from your wireguard key and the forwarded address, it'll remain constant across process restarts. The wireguard key is stored in `.config/tunwg/` (`/data/` in docker).
+Since the generated subdomain is derived from your wireguard key and the forwarded address, it'll remain constant across process restarts.
+The wireguard key is stored in `.config/tunwg/` (`/data/` in docker, `~/Library/ApplicationSupport/tunwg/` on macOS).
 
 ### Automatic SSL certificates
 
