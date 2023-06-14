@@ -27,6 +27,11 @@ import (
 
 func main() {
 	flag.Parse()
+	if internal.GetListenPort() <= 0 {
+		log.Fatalf("TUNWG_PORT needs to be set")
+	} else if internal.ServerIp() == "" {
+		log.Fatalf("TUNWG_IP needs to be set")
+	}
 	if err := internal.Initialize(); err != nil {
 		log.Fatalf("failed to initialize: %v", err)
 	}

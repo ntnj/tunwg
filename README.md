@@ -5,7 +5,10 @@ End to end encrypted secure tunnel to local servers
 ## Use
 
 To expose port 8080:
-
+```bash
+tunwg -p 8080
+```
+or
 ```bash
 tunwg --forward=http://localhost:8080
 ```
@@ -50,7 +53,7 @@ http.Serve(listener, httpHandler)
 
 ### Persistent URLs
 
-Since the generated subdomain is derived from your wireguard key and the forwarded address, it'll remain constant across process restarts. The wireguard key is stored in `.config/tunwg/` (`/data/` in docker).
+Since the generated subdomain is derived from your wireguard key and the forwarded address, it'll remain constant across process restarts. The wireguard key is stored in `.config/tunwg/` ([os.UserConfigDir](https://pkg.go.dev/os#UserConfigDir)/tunwg)  or `/data/` in docker. It can be customized with `TUNWG_PATH` environment variable.
 
 ### Automatic SSL certificates
 

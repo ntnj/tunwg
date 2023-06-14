@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -19,18 +21,28 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var forwardFlag = flag.String("forward", "", "host to forward to")
-var limitFlag = flag.String("limit", "", "limitations")
+var forwardFlag = flag.String("forward", "", "hosts to forward")
+var limitFlag = flag.String("limit", "", "username password in htpasswd format. bcrypt and plain text are supported")
+var portFlag = flag.Uint("p", 0, "port to forward")
 
 func main() {
 	flag.Parse()
-	if *forwardFlag == "" {
-		log.Fatalf("empty forwarding: %v", *forwardFlag)
+	if (*forwardFlag == "") == (*portFlag == 0) {
+		log.Fatalf("Specify one of port to forward (-p) or urls to forward (--forward)")
 	}
 	if internal.TestOnlyRunLocalhost() {
 		enableLocahostServerTesting()
 	}
-	ps := strings.Split(*forwardFlag, ",")
+	validator := authValidator()
+	var ps []string
+	if port := *portFlag; port > 0 {
+		ps = []string{fmt.Sprintf("http://localhost:%d", port)}
+		if os.Getenv("TUNWG_KEY") == "" {
+			os.Setenv("TUNWG_KEY", fmt.Sprintf("p%d", port))
+		}
+	} else {
+		ps = strings.Split(*forwardFlag, ",")
+	}
 	var g sync.WaitGroup
 	for _, p := range ps {
 		l, err := tunwg.NewListener(p)
@@ -46,7 +58,16 @@ func main() {
 				// TODO: support base path
 				pr.SetXForwarded()
 			},
-			Transport: &roundTripper{},
+			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+				log.Printf("http: proxy error: %v", err)
+				w.WriteHeader(http.StatusBadGateway)
+				w.Write([]byte("Invalid response from forwarded server"))
+			},
+		}
+		if validator != nil {
+			rp.Transport = &roundTripper{
+				validator: validator,
+			}
 		}
 		srv := &http.Server{
 			Handler: rp,
@@ -54,32 +75,50 @@ func main() {
 		g.Add(1)
 		go func() {
 			defer g.Done()
-			log.Fatalf("http server error: %v", srv.Serve(l))
+			log.Fatalf("proxy error: %v", srv.Serve(l))
 		}()
 	}
 	g.Wait()
 }
 
-type roundTripper struct{}
+type roundTripper struct {
+	validator func(username, password string) bool
+}
 
 func (r *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if len(*limitFlag) > 0 {
-		limit := *limitFlag
-		ls := strings.SplitN(limit, ":", 2)
-		euser, epass := ls[0], ls[1]
-		user, pass, ok := req.BasicAuth()
-		if !ok || user != euser || bcrypt.CompareHashAndPassword([]byte(epass), []byte(pass)) != nil {
-			return &http.Response{
-				StatusCode: http.StatusUnauthorized,
-				Header: http.Header{
-					"WWW-Authenticate": {"Basic realm=access"},
-				},
-				Body:    io.NopCloser(strings.NewReader("")),
-				Request: req,
-			}, nil
-		}
+	user, pass, ok := req.BasicAuth()
+	if !ok || !r.validator(user, pass) {
+		return &http.Response{
+			StatusCode: http.StatusUnauthorized,
+			Header: http.Header{
+				"WWW-Authenticate": {"Basic realm=access"},
+			},
+			Body:    io.NopCloser(strings.NewReader("Unauthorized")),
+			Request: req,
+		}, nil
 	}
 	return http.DefaultTransport.RoundTrip(req)
+}
+
+func authValidator() func(username, password string) bool {
+	limit := *limitFlag
+	if len(limit) == 0 {
+		return nil
+	}
+	ls := strings.SplitN(limit, ":", 2)
+	if len(ls) != 2 {
+		log.Fatalf("invalid value for --limit. Use htpasswd format")
+	}
+	euser, epass := ls[0], ls[1]
+	if strings.HasPrefix(epass, "$2") {
+		return func(username, password string) bool {
+			return username == euser && bcrypt.CompareHashAndPassword([]byte(epass), []byte(password)) == nil
+		}
+	}
+	log.Println("tunwg: using plain text password")
+	return func(username, password string) bool {
+		return username == euser && password == epass
+	}
 }
 
 func enableLocahostServerTesting() {
