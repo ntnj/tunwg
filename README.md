@@ -106,8 +106,8 @@ Since anyone can run a server on `l.tunwg.com` domain, be careful when using coo
 The instance at `l.tunwg.com` runs on a VPS with very limited resources and may be bandwidth limited. For critical use cases, you can self-host your own tunwg server.
 
 ```bash
-go install github.com/ntnj/tunwg/tunwgs@latest
-TUNWG_API=example.com TUNWG_IP=<ip-of-server> TUNWG_PORT=<wireguard-port> tunwgs
+go install github.com/ntnj/tunwg/tunwg@latest
+TUNWG_RUN_SERVER=true TUNWG_API=example.com TUNWG_IP=<ip-of-server> TUNWG_PORT=<wireguard-port> tunwg
 ```
 
 With docker:
@@ -115,9 +115,9 @@ With docker:
 tunwgs:
   image: ghcr.io/ntnj/tunwg
   network_mode: host  # or ports, 80,443,443/udp
-  command: tunwgs
   environment:
-    TUNWG_PORT: 443
+    TUNWG_RUN_SERVER: true
+    TUNWG_PORT: 443      # udp port that is used for wireguard connections.
     TUNWG_IP: "a.b.c.d"  # ip of server
     TUNWG_API: example.com  # all subdomains should resolve to server
 ```
@@ -142,11 +142,11 @@ The generated domain name is an encoding of the internal wireguard IP address an
 
 ### Develop locally
 
-Run server: `TUNWG_TEST_LOCALHOST=true TUNWG_PORT=443 TUNWG_IP=127.0.0.1 go run ./tunwgs`
+Run server: `TUNWG_TEST_LOCALHOST=true TUNWG_RUN_SERVER=true TUNWG_KEY=tunwgs TUNWG_PORT=443 TUNWG_IP=127.0.0.1 go run ./tunwg`
 
 Run client: `TUNWG_TEST_LOCALHOST=true go run ./tunwg --forward=http://localhost:8000`
 
-Test: `curl -k -Li --resolve abcd.l.tunwg.com:443:127.0.0.1 https://abcd.l.tunwg.com`
+Test: `curl -k -Li --connect-to ::127.0.0.1: https://abcd.l.tunwg.com`
 
 ## Possible Future Improvements
 

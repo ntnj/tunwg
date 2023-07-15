@@ -16,7 +16,7 @@ jobs:
       with:
         go-version-file: go.mod
     - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o bin/tunwg ./tunwg
-    - run: CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-w -s" -o bin/tunwgq-darwin ./tunwg
+    - run: CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-w -s" -o bin/tunwg-darwin ./tunwg
     - run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-w -s" -o bin/tunwg.exe ./tunwg
     - run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-w -s" -o bin/tunwg-arm64 ./tunwg
     - run: CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-w -s" -o bin/tunwg-darwin-arm64 ./tunwg

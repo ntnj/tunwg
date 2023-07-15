@@ -25,7 +25,7 @@ import (
 	"inet.af/tcpproxy"
 )
 
-func main() {
+func tunwgServer() {
 	flag.Parse()
 	if internal.GetListenPort() <= 0 {
 		log.Fatalf("TUNWG_PORT needs to be set")
@@ -35,46 +35,22 @@ func main() {
 	if err := internal.Initialize(); err != nil {
 		log.Fatalf("failed to initialize: %v", err)
 	}
-	l, err := internal.ListenTCPWg(&net.TCPAddr{Port: 443})
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
+	l443 := &tcpproxy.TargetListener{Address: "https"}
 	go func() {
-		if err := http.Serve(tls.NewListener(l, internal.GetTLSConfig()), apiMux()); err != nil {
+		if err := http.Serve(tls.NewListener(l443, internal.GetTLSConfig()), apiMux()); err != nil {
 			log.Fatalf("failed to serve api: %v", err)
 		}
 	}()
+	l80 := &tcpproxy.TargetListener{Address: "http"}
 	go func() {
-		if err := http.ListenAndServe(":80", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !strings.HasPrefix(r.URL.Path, "/.well-known/acme-challenge/") {
-				http.Redirect(w, r, "https://"+r.Host+r.RequestURI, http.StatusMovedPermanently)
-				return
-			}
-			rp := &httputil.ReverseProxy{
-				Rewrite: func(pr *httputil.ProxyRequest) {
-					ipport, err := getIPForDomain(pr.In.Host)
-					if err != nil {
-						log.Printf("unable to find host: %v", pr.In.Host)
-						w.WriteHeader(http.StatusNotFound)
-						return
-					}
-					newPort := netip.AddrPortFrom(ipport.Addr(), 80)
-					pr.Out.URL.Scheme = "http"
-					pr.Out.URL.Host = fmt.Sprintf("%v", newPort.String())
-				},
-				Transport: &http.Transport{
-					DialContext: internal.DialWg,
-				},
-			}
-			rp.ServeHTTP(w, r)
-		})); err != nil {
+		if err := http.Serve(l80, sslRedirect()); err != nil {
 			log.Fatalf("failed to serve redirect handler: %v", err)
 		}
 	}()
 	go globalPersist.loadFromDisk()
 	go globalPersist.backgroundWriter(time.Minute)
 	go internal.BackgroundLogger(10 * time.Second)
-	log.Fatalf("failed to run: %v", runSniProxy())
+	log.Fatalf("failed to run: %v", runSniProxy(l80, l443))
 }
 
 func allowUserKey(key wgtypes.Key, endpoint string) error {
@@ -86,6 +62,29 @@ func allowUserKey(key wgtypes.Key, endpoint string) error {
 		ipc = append(ipc, "endpoint="+endpoint)
 	}
 	return internal.WgSetIpc(ipc)
+}
+
+func sslRedirect() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.Handle("/.well-known/acme-challenge/", &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			ipport, err := getIPForDomain(pr.In.Host)
+			if err != nil {
+				log.Printf("unable to find host: %v", pr.In.Host)
+				return
+			}
+			newPort := netip.AddrPortFrom(ipport.Addr(), 80)
+			pr.Out.URL.Scheme = "http"
+			pr.Out.URL.Host = fmt.Sprintf("%v", newPort.String())
+		},
+		Transport: &http.Transport{
+			DialContext: internal.DialWg,
+		},
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://"+r.Host+r.RequestURI, http.StatusMovedPermanently)
+	})
+	return mux
 }
 
 func apiMux() *http.ServeMux {
@@ -160,13 +159,10 @@ func apiMux() *http.ServeMux {
 	return mux
 }
 
-func runSniProxy() error {
+func runSniProxy(l80, l443 *tcpproxy.TargetListener) error {
 	var proxy tcpproxy.Proxy
-	proxy.AddSNIRoute(":443", internal.ApiDomain(), &tcpproxy.DialProxy{
-		Addr:        fmt.Sprintf("[%v]:443", internal.GetLocalWgIp()),
-		DialContext: internal.DialWg,
-		DialTimeout: time.Second,
-	})
+	proxy.AddRoute(":80", l80)
+	proxy.AddSNIRoute(":443", internal.ApiDomain(), l443)
 	proxy.AddSNIRouteFunc(":443", func(ctx context.Context, sniName string) (tcpproxy.Target, bool) {
 		log.Printf("received request for: %v", sniName)
 		addr, err := getIPForDomain(sniName)

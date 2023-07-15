@@ -26,6 +26,21 @@ var limitFlag = flag.String("limit", "", "username password in htpasswd format. 
 var portFlag = flag.Uint("p", 0, "port to forward")
 
 func main() {
+	if os.Getenv("TUNWG_RUN_SERVER") == "true" {
+		tunwgServer()
+		return
+	}
+	if len(os.Args) > 1 && (os.Args[1] == "tunwgs" || os.Args[1] == "/bin/tunwgs") {
+		// Reproduce the older docker environment
+		os.Args = append(os.Args[:1], os.Args[2:]...)
+		if os.Getenv("TUNWG_KEY") == "" {
+			os.Setenv("TUNWG_KEY", "tunwgs")
+		}
+		tunwgServer()
+		return
+	} else if len(os.Args) > 1 && os.Args[1] == "tunwg" {
+		os.Args = append(os.Args[:1], os.Args[2:]...)
+	}
 	flag.Parse()
 	if (*forwardFlag == "") == (*portFlag == 0) {
 		log.Fatalf("Specify one of port to forward (-p) or urls to forward (--forward)")
