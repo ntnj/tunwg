@@ -20,13 +20,12 @@ docker run -it --rm --network=host -v tunwg_keys:/data ghcr.io/ntnj/tunwg tunwg 
 
 ## Install
 
+You can download a pre-compiled binary from [Github releases](https://github.com/ntnj/tunwg/releases) for [Windows](https://github.com/ntnj/tunwg/releases/latest/download/tunwg.exe), [Linux](https://github.com/ntnj/tunwg/releases/latest/download/tunwg) and Mac ([Arm](https://github.com/ntnj/tunwg/releases/latest/download/tunwg-darwin-arm64)/[Intel](https://github.com/ntnj/tunwg/releases/latest/download/tunwg-darwin))
+
 To install from source:
 ```bash
 go install github.com/ntnj/tunwg/tunwg@latest
 ```
-Github releases will be added soon.
-
-It works on Windows/Linux/Mac.
 
 ## Privacy
 

@@ -20,9 +20,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/inetaf/tcpproxy"
 	"github.com/ntnj/tunwg/internal"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
-	"inet.af/tcpproxy"
 )
 
 func tunwgServer() {

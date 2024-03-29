@@ -1,13 +1,9 @@
-FROM golang:1.20 as build
+FROM golang:1.22 as build
 
 WORKDIR /app
 
-COPY go.mod ./
-COPY go.sum ./
-RUN go mod download
-
 COPY . ./
-RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -ldflags="-w -s" -o bin/ ./tunwg
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -ldflags="-w -s" -o bin/ ./tunwg
 
 FROM alpine
 

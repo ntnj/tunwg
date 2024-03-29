@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -104,6 +105,7 @@ func BackgroundLogger(d time.Duration) {
 	for range time.Tick(d) {
 		dev := Must(GetWgDeviceInfo())
 		msg := ""
+		slices.SortFunc(dev.Peers, func(a, b wgtypes.Peer) int { return b.LastHandshakeTime.Compare(a.LastHandshakeTime) })
 		for _, peer := range dev.Peers {
 			msg += fmt.Sprintf("key:%v,ep:%v,time:%v\n", peer.PublicKey, peer.Endpoint, peer.LastHandshakeTime)
 		}
