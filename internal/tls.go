@@ -131,6 +131,7 @@ func getZeroSSLEab() (*acme.ExternalAccountBinding, error) {
 }
 
 func localhostCertificate() (*tls.Certificate, error) {
+	log.Printf("Using local certificate")
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, err

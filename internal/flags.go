@@ -53,9 +53,17 @@ func SSLCertificateEmail() string {
 }
 
 func UseRelay() bool {
-	return os.Getenv("TUNWG_RELAY") != ""
+	return os.Getenv("TUNWG_RELAY") == "true"
 }
 
 func TestOnlyRunLocalhost() bool {
 	return os.Getenv("TUNWG_TEST_LOCALHOST") == "true"
+}
+
+func EnableSsh() bool {
+	return os.Getenv("TUNWG_ENABLE_SSH") == "true"
+}
+
+func SshDomain() string {
+	return os.Getenv("TUNWG_SSH_DOMAIN")
 }

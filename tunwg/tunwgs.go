@@ -47,10 +47,22 @@ func tunwgServer() {
 			log.Fatalf("failed to serve redirect handler: %v", err)
 		}
 	}()
+	ssh := &internal.SSHState{}
+	if internal.EnableSsh() {
+		if internal.SshDomain() == "" {
+			log.Fatalf("provide TUNWG_SSH_DOMAIN")
+		}
+		ssh.Init()
+		go func() {
+			if err := ssh.Serve(); err != nil {
+				log.Fatalf("failed to serve SSH handler")
+			}
+		}()
+	}
 	go globalPersist.loadFromDisk()
 	go globalPersist.backgroundWriter(time.Minute)
-	go internal.BackgroundLogger(10 * time.Second)
-	log.Fatalf("failed to run: %v", runSniProxy(l80, l443))
+	go internal.BackgroundLogger(100 * time.Second)
+	log.Fatalf("failed to run: %v", runSniProxy(l80, l443, ssh))
 }
 
 func allowUserKey(key wgtypes.Key, endpoint string) error {
@@ -68,7 +80,8 @@ func sslRedirect() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.Handle("/.well-known/acme-challenge/", &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
-			ipport, err := getIPForDomain(pr.In.Host)
+			encodedIP, _ := strings.CutSuffix(pr.In.Host, "."+internal.ApiDomain())
+			ipport, err := getIPForDomain(encodedIP)
 			if err != nil {
 				log.Printf("unable to find host: %v", pr.In.Host)
 				return
@@ -159,44 +172,68 @@ func apiMux() *http.ServeMux {
 	return mux
 }
 
-func runSniProxy(l80, l443 *tcpproxy.TargetListener) error {
+func runSniProxy(l80, l443 tcpproxy.Target, ssh *internal.SSHState) error {
 	var proxy tcpproxy.Proxy
 	proxy.AddRoute(":80", l80)
 	proxy.AddSNIRoute(":443", internal.ApiDomain(), l443)
 	proxy.AddSNIRouteFunc(":443", func(ctx context.Context, sniName string) (tcpproxy.Target, bool) {
 		log.Printf("received request for: %v", sniName)
-		addr, err := getIPForDomain(sniName)
+		enc, typ, err := resolveDomain(sniName, true)
 		if err != nil {
-			log.Printf("dispatch error: %v", err)
+			log.Printf("dispatch error for %v: %v", sniName, err)
 			return nil, false
 		}
-		return &tcpproxy.DialProxy{
-			Addr:                 addr.String(),
-			DialContext:          internal.DialWg,
-			DialTimeout:          5 * time.Second,
-			ProxyProtocolVersion: 1,
-		}, true
+		switch typ {
+		case "wg":
+			addr, err := getIPForDomain(enc)
+			if err != nil {
+				log.Printf("dispatch error: %v", err)
+				return nil, false
+			}
+			return &tcpproxy.DialProxy{
+				Addr:                 addr.String(),
+				DialContext:          internal.DialWg,
+				DialTimeout:          5 * time.Second,
+				ProxyProtocolVersion: 1,
+			}, true
+		case "ssh":
+			return ssh.TargetForKey(enc)
+		}
+		return nil, false
 	})
+	if internal.EnableSsh() {
+		proxy.AddPrefixRoute(":443", []byte("SSH-"), ssh.Protocol)
+	}
 	return proxy.Run()
 }
 
-func getIPForDomain(sniName string) (*netip.AddrPort, error) {
+func resolveDomain(sniName string, resolveCname bool) (string, string, error) {
 	encodedIP, matched := strings.CutSuffix(sniName, "."+internal.ApiDomain())
-	if !matched {
+	if matched {
+		return encodedIP, "wg", nil
+	}
+	if internal.EnableSsh() {
+		encodedKey, matched := strings.CutSuffix(sniName, "."+internal.SshDomain())
+		if matched {
+			return encodedKey, "ssh", nil
+		}
+	}
+	if resolveCname {
 		cname, err := net.LookupCNAME(sniName)
 		if err != nil {
-			return nil, fmt.Errorf("failed to lookup cname %v: %v", sniName, err)
+			return "", "", fmt.Errorf("failed to lookup cname %v: %v", sniName, err)
 		}
 		log.Printf("got cname: %v", cname)
 		// CNAME can contain a dot the end
 		cname, _ = strings.CutSuffix(cname, ".")
-		encodedIP, matched = strings.CutSuffix(cname, "."+internal.ApiDomain())
-		if !matched {
-			return nil, fmt.Errorf("no proper suffix: %v", sniName)
-		}
+		return resolveDomain(cname, false)
 	}
-	splits := strings.Split(encodedIP, ".")
-	encodedIP = splits[len(splits)-1]
+	return "", "", fmt.Errorf("no proper suffix: %v", sniName)
+}
+
+func getIPForDomain(sniName string) (*netip.AddrPort, error) {
+	splits := strings.Split(sniName, ".")
+	encodedIP := splits[len(splits)-1]
 	addr := internal.LookupEncodedIPPort(encodedIP)
 	if addr == nil {
 		return nil, fmt.Errorf("error in dispatching: %v", sniName)
