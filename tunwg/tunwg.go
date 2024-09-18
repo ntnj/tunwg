@@ -23,6 +23,7 @@ import (
 
 var forwardFlag = flag.String("forward", "", "hosts to forward")
 var limitFlag = flag.String("limit", "", "username password in htpasswd format. bcrypt and plain text are supported")
+var limitOncePerIPFlag = flag.Duration("limit_once_on_ip", 0, "Only ask for basic auth once per ip per duration")
 var portFlag = flag.Uint("p", 0, "port to forward")
 
 func main() {
@@ -82,6 +83,7 @@ func main() {
 		if validator != nil {
 			rp.Transport = &roundTripper{
 				validator: validator,
+				ipValid:   make(map[string]time.Time),
 			}
 		}
 		srv := &http.Server{
@@ -98,9 +100,17 @@ func main() {
 
 type roundTripper struct {
 	validator func(username, password string) bool
+	ipValid   map[string]time.Time
 }
 
 func (r *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	ip := req.Header.Get("X-Forwarded-For")
+	if ip != "" && *limitOncePerIPFlag != 0 {
+		pass, ok := r.ipValid[ip]
+		if ok && time.Now().Before(pass.Add(*limitOncePerIPFlag)) {
+			return http.DefaultTransport.RoundTrip(req)
+		}
+	}
 	user, pass, ok := req.BasicAuth()
 	if !ok || !r.validator(user, pass) {
 		return &http.Response{
@@ -111,6 +121,9 @@ func (r *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			Body:    io.NopCloser(strings.NewReader("Unauthorized")),
 			Request: req,
 		}, nil
+	}
+	if ip != "" && *limitOncePerIPFlag != 0 {
+		r.ipValid[ip] = time.Now()
 	}
 	return http.DefaultTransport.RoundTrip(req)
 }
