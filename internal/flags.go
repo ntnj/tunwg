@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 func GetListenPort() int {
@@ -43,6 +44,27 @@ func AuthKey() string {
 func ServerIp() string {
 	ip := os.Getenv("TUNWG_IP")
 	return ip
+}
+
+// This returns all the configured server IP addresses
+func ServerIps() []string {
+	ip := os.Getenv("TUNWG_IP")
+	if ip == "" {
+		return nil
+	}
+
+	if !strings.Contains(ip, ",") {
+		return []string{ip}
+	}
+
+	var result []string
+	for _, addr := range strings.Split(ip, ",") {
+		addr = strings.TrimSpace(addr)
+		if addr != "" {
+			result = append(result, addr)
+		}
+	}
+	return result
 }
 
 func SSLCertificateEmail() string {

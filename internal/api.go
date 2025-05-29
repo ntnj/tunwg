@@ -5,6 +5,7 @@ type AddPeerReq struct {
 }
 
 type AddPeerResp struct {
-	Key      []byte
-	Endpoint string
+	Key       []byte
+	Endpoint  string
+	Endpoints []string
 }

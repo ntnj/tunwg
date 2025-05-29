@@ -109,6 +109,11 @@ go install github.com/ntnj/tunwg/tunwg@latest
 TUNWG_RUN_SERVER=true TUNWG_API=example.com TUNWG_IP=<ip-of-server> TUNWG_PORT=<wireguard-port> tunwg
 ```
 
+For IPv6 support, use comma-separated IPs:
+```bash
+TUNWG_IP="192.168.1.100,2001:db8::1" TUNWG_RUN_SERVER=true TUNWG_API=example.com TUNWG_PORT=443 tunwg
+```
+
 With docker:
 ```docker-compose.yml
 tunwgs:
@@ -117,8 +122,8 @@ tunwgs:
   environment:
     TUNWG_RUN_SERVER: true
     TUNWG_PORT: 443      # udp port that is used for wireguard connections.
-    TUNWG_IP: "a.b.c.d"  # ip of server
-    TUNWG_API: example.com  # all subdomains should resolve to server
+    TUNWG_IP: "1.2.3.4,::1"  # IPv4 and/or IPv6 address of server (comma seperated).
+    TUNWG_API: example.com  # all subdomains should resolve to server.
 ```
 
 Clients will connect to your hosted instance if you set the same `TUNWG_API` environment variable there.

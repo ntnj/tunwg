@@ -87,7 +87,12 @@ func addServerPeer() error {
 	if err != nil {
 		return err
 	}
+
 	endpoint := resp.Endpoint
+	if len(resp.Endpoints) > 0 {
+		endpoint = resp.Endpoints[0]
+	}
+
 	if internal.UseRelay() {
 		ep, err := establishRelay()
 		if err != nil {
