@@ -29,9 +29,10 @@ func tunwgServer() {
 	flag.Parse()
 	if internal.GetListenPort() <= 0 {
 		log.Fatalf("TUNWG_PORT needs to be set")
-	} else if internal.ServerIp() == "" {
+	} else if len(internal.ServerIps()) == 0 {
 		log.Fatalf("TUNWG_IP needs to be set")
 	}
+
 	if err := internal.Initialize(); err != nil {
 		log.Fatalf("failed to initialize: %v", err)
 	}
@@ -115,9 +116,17 @@ func apiMux() *http.ServeMux {
 		}
 		globalPersist.markDirty()
 		key := internal.GetPublicKey()
+
+		// Build endpoints for all configured IPs
+		var endpoints []string
+		for _, ip := range internal.ServerIps() {
+			endpoints = append(endpoints, fmt.Sprintf("%v:%v", ip, internal.GetListenPort()))
+		}
+
 		resp := internal.AddPeerResp{
-			Key:      key[:],
-			Endpoint: fmt.Sprintf("%v:%v", internal.ServerIp(), internal.GetListenPort()),
+			Key:       key[:],
+			Endpoint:  endpoints[0],
+			Endpoints: endpoints,
 		}
 		respBytes, err := json.Marshal(resp)
 		if err != nil {
