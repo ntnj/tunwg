@@ -11,7 +11,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
@@ -44,7 +44,7 @@ func GetTLSConfig() *tls.Config {
 			if cert, err := le.GetCertificate(hello); err == nil {
 				return cert, nil
 			} else {
-				log.Printf("error getting cert from lets encrypt: %v", err)
+				slog.Warn("error getting cert from lets encrypt", "err", err)
 			}
 			zsMu.Lock()
 			defer zsMu.Unlock()
@@ -87,7 +87,7 @@ func getZeroSSLEab() (*acme.ExternalAccountBinding, error) {
 	if !os.IsNotExist(err) {
 		return nil, err
 	}
-	log.Println("tunwg: fetching eab from zerossl")
+	slog.Info("fetching eab from zerossl")
 	zerosslApi := "https://api.zerossl.com/acme/eab-credentials-email"
 	form := url.Values{"email": {SSLCertificateEmail()}}
 	resp, err := http.Post(zerosslApi, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
@@ -112,7 +112,7 @@ func getZeroSSLEab() (*acme.ExternalAccountBinding, error) {
 	if !result.Success {
 		return nil, fmt.Errorf("failed zerossl eab: %v", string(respBytes))
 	}
-	log.Printf("tunwg: fetched zerossl credentials: %v", result.EABKID)
+	slog.Info("fetched zerossl credentials", "eab_kid", result.EABKID)
 	res := &acme.ExternalAccountBinding{
 		KID: result.EABKID,
 	}
@@ -124,7 +124,7 @@ func getZeroSSLEab() (*acme.ExternalAccountBinding, error) {
 	if fileBytes, err := json.Marshal(res); err == nil {
 		err := os.WriteFile(path, fileBytes, 0o600)
 		if err != nil {
-			log.Printf("Failed to persist eab: %v", err)
+			slog.Error("failed to persist eab", "err", err)
 		}
 	}
 	return res, nil

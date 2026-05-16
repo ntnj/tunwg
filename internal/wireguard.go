@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/netip"
 	"os"
@@ -109,7 +109,7 @@ func BackgroundLogger(d time.Duration) {
 		for _, peer := range dev.Peers {
 			msg += fmt.Sprintf("key:%v,ep:%v,time:%v\n", peer.PublicKey, peer.Endpoint, peer.LastHandshakeTime)
 		}
-		log.Printf("Peers:\n%v", msg)
+		slog.Debug("wireguard peers", "peers", msg)
 	}
 }
 

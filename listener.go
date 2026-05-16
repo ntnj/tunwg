@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -51,7 +51,7 @@ func (l *Listener) String() string {
 }
 
 func addServerPeer() error {
-	log.Println("tunwg: initiating handshake to server")
+	slog.Info("initiating handshake to server")
 	key := internal.GetPublicKey()
 	req := internal.AddPeerReq{
 		Key: key[:],
@@ -120,7 +120,7 @@ func NewListener(name string) (net.Listener, error) {
 	}
 	pl := &proxyproto.Listener{Listener: l, UnknownOK: true}
 	tl := tls.NewListener(&Listener{pl, port}, internal.GetTLSConfig())
-	log.Printf("tunwg: %v <= https://%v.%v", name, tl.Addr(), internal.ApiDomain())
+	slog.Info("listener started", "target", name, "url", fmt.Sprintf("https://%v.%v", tl.Addr(), internal.ApiDomain()))
 	return tl, nil
 }
 
@@ -144,15 +144,17 @@ func backgroundMonitor() {
 	for range time.Tick(30 * time.Second) {
 		dev, err := internal.GetWgDeviceInfo()
 		if err != nil {
-			log.Printf("WARNING: internal error: %v", err)
+			slog.Warn("failed to get wireguard device info", "err", err)
+			continue
 		}
 		if len(dev.Peers) != 1 {
-			log.Printf("WARNING: internal error: incorrect len: %+v", *dev)
+			slog.Warn("unexpected wireguard peer count", "peers", len(dev.Peers))
+			continue
 		}
 		p := dev.Peers[0]
 		if time.Since(p.LastHandshakeTime) > 150*time.Second {
 			if err := addServerPeer(); err != nil {
-				log.Printf("WARNING: Lost connection to server: %s", err)
+				slog.Warn("lost connection to server", "err", err)
 			}
 		}
 	}
@@ -200,7 +202,7 @@ func establishRelay() (string, error) {
 	go func() {
 		err := internal.RelayServer(conn, udpConn, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: dev.ListenPort})
 		if err != nil && !errors.Is(err, io.EOF) {
-			log.Printf("client relay error: %v", err)
+			slog.Error("client relay error", "err", err)
 		}
 	}()
 	return udpConn.LocalAddr().String(), nil
