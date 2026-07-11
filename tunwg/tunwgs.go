@@ -168,7 +168,7 @@ func runSniProxy(l80, l443 *tcpproxy.TargetListener) error {
 		slog.Debug("received request", "server_name", sniName)
 		addr, err := getIPForDomain(sniName)
 		if err != nil {
-			slog.Warn("dispatch error", "server_name", sniName, "err", err)
+			slog.Debug("dispatch error", "server_name", sniName, "err", err)
 			return nil, false
 		}
 		return &tcpproxy.DialProxy{
@@ -182,22 +182,24 @@ func runSniProxy(l80, l443 *tcpproxy.TargetListener) error {
 }
 
 func getIPForDomain(sniName string) (*netip.AddrPort, error) {
-	encodedIP, matched := strings.CutSuffix(sniName, "."+internal.ApiDomain())
-	if !matched {
-		cname, err := net.LookupCNAME(sniName)
+	sniName = strings.ToLower(strings.TrimSuffix(sniName, "."))
+	encodedIP, ok := internal.ExtractEncodedLabel(sniName, internal.ApiDomain())
+	if !ok {
+		if strings.HasSuffix(sniName, "."+strings.ToLower(internal.ApiDomain())) {
+			return nil, fmt.Errorf("rejecting invalid hostname: %v", sniName)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		cname, err := net.DefaultResolver.LookupCNAME(ctx, sniName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup cname %v: %v", sniName, err)
 		}
 		slog.Debug("resolved cname", "server_name", sniName, "cname", cname)
-		// CNAME can contain a dot the end
-		cname, _ = strings.CutSuffix(cname, ".")
-		encodedIP, matched = strings.CutSuffix(cname, "."+internal.ApiDomain())
-		if !matched {
+		encodedIP, ok = internal.ExtractEncodedLabel(cname, internal.ApiDomain())
+		if !ok {
 			return nil, fmt.Errorf("no proper suffix: %v", sniName)
 		}
 	}
-	splits := strings.Split(encodedIP, ".")
-	encodedIP = splits[len(splits)-1]
 	addr := internal.LookupEncodedIPPort(encodedIP)
 	if addr == nil {
 		return nil, fmt.Errorf("error in dispatching: %v", sniName)

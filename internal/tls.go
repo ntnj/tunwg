@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -28,11 +29,35 @@ import (
 
 var zsMu sync.Mutex
 
+func tunnelHostPolicy(ctx context.Context, host string) error {
+	api := ApiDomain()
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	if host == strings.ToLower(api) {
+		return nil
+	}
+	label, ok := ExtractEncodedLabel(host, api)
+	if !ok {
+		if strings.HasSuffix(host, "."+strings.ToLower(api)) {
+			return fmt.Errorf("tunwg: rejecting invalid hostname %q", host)
+		}
+		return nil
+	}
+	addr := LookupEncodedIPPort(label)
+	if addr == nil {
+		return fmt.Errorf("tunwg: hostname %q does not decode to a valid endpoint", host)
+	}
+	if local := GetLocalWgIp(); local.IsValid() && addr.Addr() != local {
+		return fmt.Errorf("tunwg: hostname %q does not map to this instance", host)
+	}
+	return nil
+}
+
 func GetTLSConfig() *tls.Config {
 	le := &autocert.Manager{
-		Prompt: autocert.AcceptTOS,
-		Email:  SSLCertificateEmail(),
-		Cache:  autocert.DirCache(filepath.Join(Keystorage(), "certs")),
+		Prompt:     autocert.AcceptTOS,
+		Email:      SSLCertificateEmail(),
+		Cache:      autocert.DirCache(filepath.Join(Keystorage(), "certs")),
+		HostPolicy: tunnelHostPolicy,
 	}
 	var zs *autocert.Manager
 	return &tls.Config{
@@ -61,6 +86,7 @@ func GetTLSConfig() *tls.Config {
 					Email:                  SSLCertificateEmail(),
 					Cache:                  autocert.DirCache(filepath.Join(Keystorage(), "certs")),
 					ExternalAccountBinding: eab,
+					HostPolicy:             tunnelHostPolicy,
 				}
 			}
 			hl, err := ListenTCPWg(&net.TCPAddr{Port: 80})
