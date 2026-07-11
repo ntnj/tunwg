@@ -39,13 +39,27 @@ func tunwgServer() {
 	}
 	l443 := &tcpproxy.TargetListener{Address: "https"}
 	go func() {
-		if err := http.Serve(tls.NewListener(l443, internal.GetTLSConfig()), apiMux()); err != nil {
+		srv := &http.Server{
+			Handler:           apiMux(),
+			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       60 * time.Second,
+		}
+		if err := srv.Serve(tls.NewListener(l443, internal.GetTLSConfig())); err != nil {
 			fatal("failed to serve api", "err", err)
 		}
 	}()
 	l80 := &tcpproxy.TargetListener{Address: "http"}
 	go func() {
-		if err := http.Serve(l80, sslRedirect()); err != nil {
+		srv := &http.Server{
+			Handler:           sslRedirect(),
+			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       60 * time.Second,
+		}
+		if err := srv.Serve(l80); err != nil {
 			fatal("failed to serve redirect handler", "err", err)
 		}
 	}()
