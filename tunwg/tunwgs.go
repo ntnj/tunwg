@@ -16,6 +16,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -118,7 +119,7 @@ func apiMux() *http.ServeMux {
 		key := internal.GetPublicKey()
 		resp := internal.AddPeerResp{
 			Key:      key[:],
-			Endpoint: fmt.Sprintf("%v:%v", internal.ServerIp(), internal.GetListenPort()),
+			Endpoint: net.JoinHostPort(internal.ServerIp(), strconv.Itoa(internal.GetListenPort())),
 		}
 		respBytes, err := json.Marshal(resp)
 		if err != nil {
