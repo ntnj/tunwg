@@ -51,3 +51,12 @@ func LookupEncodedIPPort(sni string) *netip.AddrPort {
 func GetLocalWgIp() netip.Addr {
 	return GetIPForKey(GetPublicKey())
 }
+
+func ExtractEncodedLabel(host, apiDomain string) (label string, ok bool) {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	label, matched := strings.CutSuffix(host, "."+strings.ToLower(apiDomain))
+	if !matched || label == "" || strings.Contains(label, ".") {
+		return "", false
+	}
+	return label, true
+}

@@ -16,6 +16,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -38,19 +39,34 @@ func tunwgServer() {
 	}
 	l443 := &tcpproxy.TargetListener{Address: "https"}
 	go func() {
-		if err := http.Serve(tls.NewListener(l443, internal.GetTLSConfig()), apiMux()); err != nil {
+		srv := &http.Server{
+			Handler:           apiMux(),
+			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       60 * time.Second,
+		}
+		if err := srv.Serve(tls.NewListener(l443, internal.GetTLSConfig())); err != nil {
 			fatal("failed to serve api", "err", err)
 		}
 	}()
 	l80 := &tcpproxy.TargetListener{Address: "http"}
 	go func() {
-		if err := http.Serve(l80, sslRedirect()); err != nil {
+		srv := &http.Server{
+			Handler:           sslRedirect(),
+			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       60 * time.Second,
+		}
+		if err := srv.Serve(l80); err != nil {
 			fatal("failed to serve redirect handler", "err", err)
 		}
 	}()
 	go globalPersist.loadFromDisk()
 	go globalPersist.backgroundWriter(time.Minute)
 	go internal.BackgroundLogger(10 * time.Second)
+	go internal.PurgeStalePeers(15*time.Minute, 30*time.Minute)
 	fatal("failed to run", "err", runSniProxy(l80, l443))
 }
 
@@ -118,7 +134,7 @@ func apiMux() *http.ServeMux {
 		key := internal.GetPublicKey()
 		resp := internal.AddPeerResp{
 			Key:      key[:],
-			Endpoint: fmt.Sprintf("%v:%v", internal.ServerIp(), internal.GetListenPort()),
+			Endpoint: net.JoinHostPort(internal.ServerIp(), strconv.Itoa(internal.GetListenPort())),
 		}
 		respBytes, err := json.Marshal(resp)
 		if err != nil {
@@ -168,7 +184,7 @@ func runSniProxy(l80, l443 *tcpproxy.TargetListener) error {
 		slog.Debug("received request", "server_name", sniName)
 		addr, err := getIPForDomain(sniName)
 		if err != nil {
-			slog.Warn("dispatch error", "server_name", sniName, "err", err)
+			slog.Debug("dispatch error", "server_name", sniName, "err", err)
 			return nil, false
 		}
 		return &tcpproxy.DialProxy{
@@ -182,22 +198,24 @@ func runSniProxy(l80, l443 *tcpproxy.TargetListener) error {
 }
 
 func getIPForDomain(sniName string) (*netip.AddrPort, error) {
-	encodedIP, matched := strings.CutSuffix(sniName, "."+internal.ApiDomain())
-	if !matched {
-		cname, err := net.LookupCNAME(sniName)
+	sniName = strings.ToLower(strings.TrimSuffix(sniName, "."))
+	encodedIP, ok := internal.ExtractEncodedLabel(sniName, internal.ApiDomain())
+	if !ok {
+		if strings.HasSuffix(sniName, "."+strings.ToLower(internal.ApiDomain())) {
+			return nil, fmt.Errorf("rejecting invalid hostname: %v", sniName)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		cname, err := net.DefaultResolver.LookupCNAME(ctx, sniName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup cname %v: %v", sniName, err)
 		}
 		slog.Debug("resolved cname", "server_name", sniName, "cname", cname)
-		// CNAME can contain a dot the end
-		cname, _ = strings.CutSuffix(cname, ".")
-		encodedIP, matched = strings.CutSuffix(cname, "."+internal.ApiDomain())
-		if !matched {
+		encodedIP, ok = internal.ExtractEncodedLabel(cname, internal.ApiDomain())
+		if !ok {
 			return nil, fmt.Errorf("no proper suffix: %v", sniName)
 		}
 	}
-	splits := strings.Split(encodedIP, ".")
-	encodedIP = splits[len(splits)-1]
 	addr := internal.LookupEncodedIPPort(encodedIP)
 	if addr == nil {
 		return nil, fmt.Errorf("error in dispatching: %v", sniName)

@@ -104,7 +104,9 @@ func main() {
 			}
 		}
 		srv := &http.Server{
-			Handler: rp,
+			Handler:           rp,
+			ReadHeaderTimeout: 10 * time.Second,
+			IdleTimeout:       120 * time.Second,
 		}
 		g.Add(1)
 		go func() {
