@@ -66,6 +66,7 @@ func tunwgServer() {
 	go globalPersist.loadFromDisk()
 	go globalPersist.backgroundWriter(time.Minute)
 	go internal.BackgroundLogger(10 * time.Second)
+	go internal.PurgeStalePeers(15*time.Minute, 30*time.Minute)
 	fatal("failed to run", "err", runSniProxy(l80, l443))
 }
 

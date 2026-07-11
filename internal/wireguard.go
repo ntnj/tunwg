@@ -93,6 +93,32 @@ func GetPublicKey() wgtypes.Key {
 	return *wgPubKey
 }
 
+func RemovePeer(pub wgtypes.Key) error {
+	return wgDevice.IpcSet(fmt.Sprintf("public_key=%s\nremove=true\n", hex.EncodeToString(pub[:])))
+}
+
+func PurgeStalePeers(interval, maxIdle time.Duration) {
+	for range time.Tick(interval) {
+		dev, err := GetWgDeviceInfo()
+		if err != nil {
+			slog.Warn("purge stale peers: failed to read device info", "err", err)
+			continue
+		}
+		for _, p := range dev.Peers {
+			if p.LastHandshakeTime.IsZero() {
+				continue
+			}
+			if time.Since(p.LastHandshakeTime) > maxIdle {
+				if err := RemovePeer(p.PublicKey); err != nil {
+					slog.Warn("purge stale peers: failed to remove peer", "key", p.PublicKey.String(), "err", err)
+					continue
+				}
+				slog.Info("purged stale peer", "key", p.PublicKey.String(), "idle", time.Since(p.LastHandshakeTime))
+			}
+		}
+	}
+}
+
 func WgSetIpc(ins []string) error {
 	return wgDevice.IpcSet(strings.Join(ins, "\n"))
 }
